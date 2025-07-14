@@ -1,5 +1,7 @@
 import { motion } from "framer-motion";
 import { ExampleButton } from "../components/ExampleButton";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 export default function Home() {
   return (
@@ -19,6 +21,9 @@ export default function Home() {
       >
         <ExampleButton />
       </motion.div>
+      <Link href="/bingo-sessions" className="mt-8">
+        <Button variant="outline">Ir a Bingo Sessions</Button>
+      </Link>
     </div>
   );
 } 
