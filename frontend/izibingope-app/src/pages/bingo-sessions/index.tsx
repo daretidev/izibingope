@@ -72,7 +72,7 @@ export default function BingoSessionsPage() {
           <Card
             key={session.id}
             className="cursor-pointer hover:shadow-lg transition-shadow"
-            onClick={() => router.push(`/bingo-sessions/${session.id}`)}
+            onClick={() => router.push(`/bingo-sessions/${session.id}/`)}
           >
             <CardContent className="py-4 flex flex-col gap-1">
               <span className="font-semibold text-lg">{session.name}</span>
