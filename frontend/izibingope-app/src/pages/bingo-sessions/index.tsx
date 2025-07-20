@@ -51,22 +51,22 @@ export default function BingoSessionsPage() {
 
   return (
     <div className="max-w-xl mx-auto py-10 px-4">
-      <h1 className="text-2xl font-bold mb-6">Bingo Sessions</h1>
+      <h1 className="text-2xl font-bold mb-6">Partidas de Bingo</h1>
       <form onSubmit={handleCreate} className="flex gap-2 mb-8">
         <Input
-          placeholder="Session name"
+          placeholder="Nombre de la partida"
           value={sessionName}
           onChange={e => setSessionName(e.target.value)}
           disabled={loading}
         />
         <Button type="submit" disabled={loading || !sessionName.trim()}>
-          {loading ? "Creating..." : "Create Session"}
+          {loading ? "Creando..." : "Crea partida"}
         </Button>
       </form>
       {error && <div className="text-red-500 mb-4">{error}</div>}
       <div className="grid gap-4">
         {sessions.length === 0 && !loading && (
-          <div className="text-muted-foreground">No sessions yet.</div>
+          <div className="text-muted-foreground">No hay partidas aún.</div>
         )}
         {sessions.map(session => (
           <Card
@@ -77,7 +77,7 @@ export default function BingoSessionsPage() {
             <CardContent className="py-4 flex flex-col gap-1">
               <span className="font-semibold text-lg">{session.name}</span>
               <span className="text-xs text-muted-foreground">
-                Created: {new Date(session.createdAt).toLocaleString()}
+                Creado: {new Date(session.createdAt).toLocaleString()}
               </span>
             </CardContent>
           </Card>

@@ -19,11 +19,12 @@ import { useDrawnNumbers } from "@/hooks/useDrawnNumbers";
 
 import { getPatternCoords, PatternType } from "@/lib/patterns";
 import { Switch } from "@/components/ui/switch";
+import { PatternGrid } from "@/components/PatternGrid";
 
 function Breadcrumbs({ sessionName }: { sessionName: string }) {
   return (
     <nav className="mb-6 text-sm text-muted-foreground flex items-center gap-2">
-      <Link href="/bingo-sessions" className="hover:underline">Sessions</Link>
+      <Link href="/bingo-sessions" className="hover:underline">Partidas</Link>
       <span>&gt;</span>
       <span className="font-semibold text-foreground">{sessionName}</span>
     </nav>
@@ -323,7 +324,9 @@ export default function BingoSessionDetail() {
   const [selectedCard, setSelectedCard] = useState<BingoCard | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [modalSaving, setModalSaving] = useState(false);
-  const [patternModalOpen, setPatternModalOpen] = useState(false);
+  const [customPattern, setCustomPattern] = useState<boolean[][]>(Array(5).fill(null).map(() => Array(5).fill(false)));
+  const [patternTypeModalOpen, setPatternTypeModalOpen] = useState(false);
+  const [patternEditModalOpen, setPatternEditModalOpen] = useState(false);
   // Unificar estado de números extraídos
   const {
     drawnNumbers,
@@ -338,12 +341,15 @@ export default function BingoSessionDetail() {
 
   // --- Estado para el patrón de juego ---
   const patternOptions = [
-    { value: "full", label: "Full Card", icon: "🃏" },
-    { value: "row", label: "First Row", icon: "📊" },
-    { value: "corners", label: "Four Corners", icon: "🔲" },
-    { value: "cross", label: "Cross", icon: "➕" },
+    { value: "full", label: "Cartón lleno", icon: "🟩" },
+    { value: "row", label: "Primera fila", icon: <span className="text-3xl font-bold">➖</span> },
+    { value: "col", label: "Primera columna", icon: <span className="text-3xl font-bold">|</span> },
+    { value: "l", label: "L", icon: <span className="text-3xl font-bold">L</span> },
+    { value: "u", label: "U", icon: <span className="text-3xl font-bold">U</span> },
+    { value: "c", label: "C", icon: <span className="text-3xl font-bold">C</span> },
+    { value: "cross", label: "Cruz", icon: "➕" },
     { value: "x", label: "X", icon: "❌" },
-    { value: "custom", label: "Custom", icon: "⚙️" },
+    { value: "custom", label: "Personalizado", icon: "⚙️" },
   ];
   const [pattern, setPattern] = useState<string>("full");
 
@@ -360,6 +366,22 @@ export default function BingoSessionDetail() {
     if (typeof sessionId !== "string") return;
     localStorage.setItem(`izibingope_pattern_${sessionId}`, pattern);
   }, [pattern, sessionId]);
+
+  // Lógica para obtener las celdas del patrón según el tipo de juego
+  const getActivePatternCoords = () => {
+    if (pattern === 'custom') {
+      // Devuelve las coordenadas de las celdas activas en customPattern
+      const coords: [number, number][] = [];
+      for (let r = 0; r < 5; r++) {
+        for (let c = 0; c < 5; c++) {
+          if (customPattern[r][c]) coords.push([r, c]);
+        }
+      }
+      return coords;
+    } else {
+      return getPatternCoords(pattern as PatternType);
+    }
+  };
 
   // Fetch session and cards
   // Detectar si la ruta está lista
@@ -440,8 +462,8 @@ export default function BingoSessionDetail() {
 
   // --- Lógica de progreso para cada tarjeta ---
   const cardsWithProgress = useMemo(() => {
+    const patternCells = getActivePatternCoords();
     return cards.map(card => {
-      let patternCells = getPatternCoords(pattern as PatternType);
       const cardNumbers = card.numbers;
       const patternValues = patternCells.map(([r, c]) => cardNumbers[r][c]);
       const drawnValues = drawnNumbers.map(n => n.value);
@@ -451,7 +473,7 @@ export default function BingoSessionDetail() {
       const percent = totalCount > 0 ? matchedCount / totalCount : 0;
       return { card, matchedCount, totalCount, remaining, percent, patternCells };
     });
-  }, [cards, drawnNumbers, pattern]);
+  }, [cards, drawnNumbers, pattern, customPattern]);
 
   // Calcular el máximo porcentaje de avance
   const maxPercent = useMemo(() => {
@@ -465,9 +487,9 @@ export default function BingoSessionDetail() {
     if (!cards.length || !drawnNumbers.length) return new Set<string>();
     
     const completed = new Set<string>();
+    const patternCells = getActivePatternCoords();
     
     cards.forEach(card => {
-      const patternCells = getPatternCoords(pattern as PatternType);
       const cardNumbers = card.numbers;
       const patternValues = patternCells.map(([r, c]) => cardNumbers[r][c]);
       const drawnValues = drawnNumbers.map(n => n.value);
@@ -481,7 +503,7 @@ export default function BingoSessionDetail() {
     });
     
     return completed;
-  }, [cards, drawnNumbers, pattern]);
+  }, [cards, drawnNumbers, pattern, customPattern]);
 
   // Ordenar siempre por progreso (más aciertos primero)
   const sortedCardsWithProgress = useMemo(() => {
@@ -513,7 +535,7 @@ export default function BingoSessionDetail() {
         <div className="flex items-center gap-4">
           <Button
             variant="outline"
-            onClick={() => setPatternModalOpen(true)}
+            onClick={() => setPatternTypeModalOpen(true)}
             className="flex flex-col items-center justify-center gap-2 p-4 w-20 h-20 min-w-20 min-h-20"
           >
             <Gamepad2 className="w-6 h-6" />
@@ -589,14 +611,15 @@ export default function BingoSessionDetail() {
           )}
         </div>
       )}
-      {/* Si patrón es custom, mostrar placeholder */}
-      {pattern === "custom" ? (
-        <div className="mb-8 flex items-center gap-4">
-          <span className="text-muted-foreground">Custom pattern coming soon</span>
-          <Button disabled>Define Pattern</Button>
-        </div>
-      ) : null}
       
+      {pattern === "custom" && (
+        <div className="mb-4 flex justify-center">
+          <Button variant="outline" onClick={() => setPatternEditModalOpen(true)}>
+            Editar patrón
+          </Button>
+        </div>
+      )}
+
       {/* PASO 3: Grid de tarjetas siempre visible */}
       <div className={`grid gap-4 mb-8 ${
         compactView 
@@ -665,37 +688,62 @@ export default function BingoSessionDetail() {
       </Dialog>
 
       {/* Modal para seleccionar tipo de juego */}
-      <Dialog open={patternModalOpen} onOpenChange={setPatternModalOpen}>
-        <DialogContent className="max-w-md w-full p-6">
+      <Dialog open={patternTypeModalOpen} onOpenChange={setPatternTypeModalOpen}>
+        <DialogContent className="max-w-sm w-full p-3">
           <DialogHeader>
             <DialogTitle>Seleccionar Tipo de Juego</DialogTitle>
           </DialogHeader>
-          <div className="flex flex-wrap justify-center gap-4 mt-4">
+          <div className="grid grid-cols-3 gap-3 justify-center">
             {patternOptions.map((option) => (
-              <Button
+              <button
                 key={option.value}
-                variant={pattern === option.value ? "default" : "outline"}
-                className="flex flex-col items-center justify-center gap-3 p-4 w-24 h-24 min-w-24 min-h-24"
+                type="button"
+                className={
+                  `flex flex-col items-center justify-center
+                  w-24 h-24 rounded-xl border-2
+                  transition
+                  ${pattern === option.value
+                    ? 'border-primary bg-primary/10'
+                    : 'border-gray-200 bg-white'}`
+                }
                 onClick={() => {
                   setPattern(option.value);
-                  setPatternModalOpen(false);
+                  setPatternTypeModalOpen(false);
                 }}
               >
-                <div className="flex-1 flex items-center justify-center">
-                  <span className="text-3xl">{option.icon}</span>
-                </div>
-                <div className="flex-1 flex items-center justify-center">
-                  <span className="text-xs font-medium text-center leading-tight">
-                    {option.label.includes(' ') 
-                      ? option.label.split(' ').map((word, i) => (
-                          <span key={i} className="block">{word}</span>
-                        ))
-                      : option.label
-                    }
-                  </span>
-                </div>
-              </Button>
+                <span className="flex items-center justify-center text-4xl mb-1">
+                  {option.icon}
+                </span>
+                <span className="text-xs font-medium text-center leading-tight break-words">
+                  {option.label.includes(' ')
+                    ? option.label.split(' ').map((word, i) => (
+                        <span key={i} className="block">{word}</span>
+                      ))
+                    : option.label}
+                </span>
+              </button>
             ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de edición de patrón personalizado */}
+      <Dialog open={patternEditModalOpen} onOpenChange={setPatternEditModalOpen}>
+        <DialogContent className="max-w-md w-full p-6">
+          <DialogHeader>
+            <DialogTitle>Dibuja tu patrón personalizado</DialogTitle>
+          </DialogHeader>
+          <PatternGrid
+            initialPattern={customPattern}
+            onChange={setCustomPattern}
+          />
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setPatternEditModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => setPatternEditModalOpen(false)}>
+              Usar este patrón
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
