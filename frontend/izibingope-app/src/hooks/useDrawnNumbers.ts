@@ -31,8 +31,12 @@ export function useDrawnNumbers(sessionId?: string) {
     try {
       await addDrawnNumber(sessionId, value);
       refresh();
-    } catch (e: any) {
-      setError(e.message || "Error al agregar número");
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        setError(e.message || "Error al agregar número");
+      } else {
+        setError("Error desconocido al agregar número");
+      }
     } finally {
       setLoading(false);
     }
@@ -50,8 +54,12 @@ export function useDrawnNumbers(sessionId?: string) {
         ...filtered
       ]));
       setDrawnNumbers(filtered);
-    } catch (e: any) {
-      setError(e.message || "Error al eliminar número");
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        setError(e.message || "Error al eliminar número");
+      } else {
+        setError("Error desconocido al eliminar número");
+      }
     } finally {
       setLoading(false);
     }
@@ -64,8 +72,12 @@ export function useDrawnNumbers(sessionId?: string) {
     try {
       await removeLastDrawnNumber(sessionId);
       refresh();
-    } catch (e: any) {
-      setError(e.message || "Error al eliminar el último número");
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        setError(e.message || "Error al eliminar el último número");
+      } else {
+        setError("Error desconocido al eliminar el último número");
+      }
     } finally {
       setLoading(false);
     }

@@ -9,16 +9,13 @@ import { toast, Toaster } from "sonner";
 import { getBingoSession, BingoSession } from "@/services/bingoSessionService";
 import { getBingoCards, deleteBingoCard, createBingoCard, updateBingoCard, BingoCard } from "@/services/bingoCardService";
 
-import { Plus, Gamepad2, Trash2, Grid3X3, Grid, Trophy } from "lucide-react";
+import { Plus, Gamepad2, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-
 import { DrawnNumbersInput } from "@/components/DrawnNumbersInput";
 import { CardThumbnail } from "@/components/CardThumbnail";
 import { useDrawnNumbers } from "@/hooks/useDrawnNumbers";
 
 import { getPatternCoords, PatternType } from "@/lib/patterns";
-import { Switch } from "@/components/ui/switch";
 import { PatternGrid } from "@/components/PatternGrid";
 
 function Breadcrumbs({ sessionName }: { sessionName: string }) {
@@ -340,7 +337,7 @@ export default function BingoSessionDetail() {
 
 
   // --- Estado para el patrón de juego ---
-  const patternOptions = [
+  const patternOptions = useMemo(() => [
     { value: "full", label: "Cartón lleno", icon: "🟩" },
     { value: "row", label: "Primera fila", icon: <span className="text-3xl font-bold">➖</span> },
     { value: "col", label: "Primera columna", icon: <span className="text-3xl font-bold">|</span> },
@@ -350,7 +347,7 @@ export default function BingoSessionDetail() {
     { value: "cross", label: "Cruz", icon: "➕" },
     { value: "x", label: "X", icon: "❌" },
     { value: "custom", label: "Personalizado", icon: "⚙️" },
-  ];
+  ], []);
   const [pattern, setPattern] = useState<string>("full");
 
   // Persistencia en localStorage
@@ -360,7 +357,7 @@ export default function BingoSessionDetail() {
     if (saved && patternOptions.some(opt => opt.value === saved)) {
       setPattern(saved);
     }
-  }, [sessionId]);
+  }, [sessionId, patternOptions]);
 
   useEffect(() => {
     if (typeof sessionId !== "string") return;
@@ -450,8 +447,12 @@ export default function BingoSessionDetail() {
       await deleteBingoCard(card.id);
       setCards(cards => cards.filter(c => c.id !== card.id));
       toast.success("Card deleted");
-    } catch {
-      toast.error("Error deleting card");
+    } catch (error) {
+      if (error instanceof Error) {
+        toast.error(`Error deleting card: ${error.message}`);
+      } else {
+        toast.error("Error deleting card");
+      }
     } finally {
       setDeletingId(null);
     }
@@ -461,7 +462,7 @@ export default function BingoSessionDetail() {
   const skeletons = Array(6).fill(0);
 
   // --- Lógica de progreso para cada tarjeta ---
-  const cardsWithProgress = useMemo(() => {
+  const cardsWithProgress = useMemo<{ card: BingoCard; matchedCount: number; totalCount: number; remaining: number; percent: number; patternCells: [number, number][]; }[]>(() => {
     const patternCells = getActivePatternCoords();
     return cards.map(card => {
       const cardNumbers = card.numbers;
@@ -477,7 +478,7 @@ export default function BingoSessionDetail() {
 
   // Calcular el máximo porcentaje de avance
   const maxPercent = useMemo(() => {
-    return cardsWithProgress.reduce((max, c) => c.percent > max ? c.percent : max, 0);
+    return cardsWithProgress.reduce((max: number, c) => c.percent > max ? c.percent : max, 0);
   }, [cardsWithProgress]);
 
   const [compactView, setCompactView] = useState(false);
@@ -541,8 +542,8 @@ export default function BingoSessionDetail() {
             <Gamepad2 className="w-6 h-6" />
             <span className="text-xs font-medium text-center leading-tight">
               {patternOptions.find(opt => opt.value === pattern)?.label?.includes(' ') 
-                ? patternOptions.find(opt => opt.value === pattern)?.label?.split(' ').map((word, i) => (
-                    <span key={i} className="block">{word}</span>
+                ? patternOptions.find(opt => opt.value === pattern)?.label?.split(' ').map((word) => (
+                    <span key={word} className="block">{word}</span>
                   ))
                 : patternOptions.find(opt => opt.value === pattern)?.label || "Tipo de\njuego"
               }
@@ -557,7 +558,7 @@ export default function BingoSessionDetail() {
                 if (!window.confirm('¿Seguro que quieres limpiar todos los números extraídos?')) return;
                 if (typeof sessionId === 'string') {
                   localStorage.setItem('izibingope_drawn_numbers', JSON.stringify(
-                    JSON.parse(localStorage.getItem('izibingope_drawn_numbers') || '[]').filter((n: any) => n.sessionId !== sessionId)
+                    JSON.parse(localStorage.getItem('izibingope_drawn_numbers') || '[]').filter((n: { sessionId: string }) => n.sessionId !== sessionId)
                   ));
                   refreshDrawnNumbers();
                 }
@@ -716,8 +717,8 @@ export default function BingoSessionDetail() {
                 </span>
                 <span className="text-xs font-medium text-center leading-tight break-words">
                   {option.label.includes(' ')
-                    ? option.label.split(' ').map((word, i) => (
-                        <span key={i} className="block">{word}</span>
+                    ? option.label.split(' ').map((word) => (
+                        <span key={word} className="block">{word}</span>
                       ))
                     : option.label}
                 </span>

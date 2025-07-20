@@ -50,9 +50,14 @@ export const DrawnNumbersInput: React.FC<DrawnNumbersInputProps> = ({ sessionId,
       setTimeout(() => {
         inputRef.current?.focus();
       }, 0);
-    } catch (e: any) {
-      setLocalError(e.message || "Error al agregar número");
-      toast.error(e.message || "Error al agregar número");
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        setLocalError(e.message || "Error al agregar número");
+        toast.error(e.message || "Error al agregar número");
+      } else {
+        setLocalError("Error desconocido al agregar número");
+        toast.error("Error desconocido al agregar número");
+      }
     }
   };
 
@@ -61,8 +66,12 @@ export const DrawnNumbersInput: React.FC<DrawnNumbersInputProps> = ({ sessionId,
       await removeNumber(value);
       toast.success(`Número ${value} eliminado`);
       onChange?.();
-    } catch (e: any) {
-      toast.error(e.message || "Error al eliminar el número");
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        toast.error(e.message || "Error al eliminar el número");
+      } else {
+        toast.error("Error desconocido al eliminar el número");
+      }
     }
   };
 
@@ -71,8 +80,12 @@ export const DrawnNumbersInput: React.FC<DrawnNumbersInputProps> = ({ sessionId,
       await removeLastNumber();
       toast.success("Último número eliminado");
       onChange?.();
-    } catch (e: any) {
-      toast.error(e.message || "Error al eliminar el último número");
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        toast.error(e.message || "Error al eliminar el último número");
+      } else {
+        toast.error("Error desconocido al eliminar el último número");
+      }
     }
   };
 
