@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -12,6 +12,27 @@ import { getBingoCards, deleteBingoCard, createBingoCard, updateBingoCard, Bingo
 import { Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import {
+  addDrawnNumber,
+  getDrawnNumbers,
+  removeLastDrawnNumber,
+  DrawnNumber,
+} from "@/services/drawnNumberService";
+import { DrawnNumbersInput } from "@/components/DrawnNumbersInput";
+import { CardThumbnail } from "@/components/CardThumbnail";
+import { useDrawnNumbers } from "@/hooks/useDrawnNumbers";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { getPatternCoords, PatternType } from "@/lib/patterns";
+import { Switch } from "@/components/ui/switch";
 
 function Breadcrumbs({ sessionName }: { sessionName: string }) {
   return (
@@ -19,67 +40,11 @@ function Breadcrumbs({ sessionName }: { sessionName: string }) {
       <Link href="/bingo-sessions" className="hover:underline">Sessions</Link>
       <span>&gt;</span>
       <span className="font-semibold text-foreground">{sessionName}</span>
-      <span>&gt;</span>
-      <span>Cards</span>
     </nav>
   );
 }
 
-function CardThumbnail({ card, onEdit, onDelete, loading }: {
-  card: BingoCard;
-  onEdit: () => void;
-  onDelete: () => void;
-  loading: boolean;
-}) {
-  const [hovered, setHovered] = useState(false);
-  return (
-    <Card
-      className="relative group cursor-pointer hover:shadow-lg transition-shadow"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <CardContent className="py-4">
-        <div className="flex justify-between items-start mb-3">
-          <span className="font-semibold">{card.name}</span>
-          <span className="text-xs text-muted-foreground">
-            {new Date(card.createdAt).toLocaleDateString()}
-          </span>
-        </div>
-        <div className="grid grid-cols-5 gap-1 text-xs">
-          {card.numbers.map((row, rowIndex) =>
-            row.map((number, colIndex) => (
-              <div
-                key={`${rowIndex}-${colIndex}`}
-                className="bg-muted p-1 text-center rounded min-h-[24px] flex items-center justify-center"
-              >
-                {number || "•"}
-              </div>
-            ))
-          )}
-        </div>
-        {/* Overlay icons */}
-        {hovered && !loading && (
-          <div className="absolute inset-0 flex items-center justify-center gap-4 bg-black/30 rounded transition-opacity">
-            <button
-              onClick={e => { e.stopPropagation(); onEdit(); }}
-              className="text-white hover:text-blue-300 text-xl"
-              title="Edit"
-            >
-              ✏️
-            </button>
-            <button
-              onClick={e => { e.stopPropagation(); onDelete(); }}
-              className="text-white hover:text-red-400 text-xl"
-              title="Delete"
-            >
-              🗑️
-            </button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
+// Eliminar la función local CardThumbnail (de la línea 28 a la 84 aprox)
 
 // --- Card Form Modal Component ---
 interface CardFormModalProps {
@@ -354,6 +319,44 @@ export default function BingoSessionDetail() {
   const [selectedCard, setSelectedCard] = useState<BingoCard | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [modalSaving, setModalSaving] = useState(false);
+  // Unificar estado de números extraídos
+  const {
+    drawnNumbers,
+    loading: drawnLoading,
+    error: drawnError,
+    addNumber,
+    removeNumber,
+    removeLastNumber,
+    refresh: refreshDrawnNumbers,
+  } = useDrawnNumbers(typeof sessionId === 'string' ? sessionId : undefined);
+  const [drawInput, setDrawInput] = useState("");
+  const [drawError, setDrawError] = useState<string | null>(null);
+  const [drawLoading, setDrawLoading] = useState(false);
+
+  // --- Estado para el patrón de juego ---
+  const patternOptions = [
+    { value: "full", label: "Full Card" },
+    { value: "row", label: "First Row" },
+    { value: "corners", label: "Four Corners" },
+    { value: "cross", label: "Cross" },
+    { value: "x", label: "X" },
+    { value: "custom", label: "Custom" },
+  ];
+  const [pattern, setPattern] = useState<string>("full");
+
+  // Persistencia en localStorage
+  useEffect(() => {
+    if (typeof sessionId !== "string") return;
+    const saved = localStorage.getItem(`izibingope_pattern_${sessionId}`);
+    if (saved && patternOptions.some(opt => opt.value === saved)) {
+      setPattern(saved);
+    }
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (typeof sessionId !== "string") return;
+    localStorage.setItem(`izibingope_pattern_${sessionId}`, pattern);
+  }, [pattern, sessionId]);
 
   // Fetch session and cards
   // Detectar si la ruta está lista
@@ -402,6 +405,67 @@ export default function BingoSessionDetail() {
     loadData();
   }, [sessionId, isRouteReady, router]);
 
+  const handleAddDrawnNumber = async () => {
+    setDrawError(null);
+    if (!drawInput.trim()) return;
+    const value = Number(drawInput);
+    if (!Number.isInteger(value) || value < 1 || value > 75) {
+      setDrawError("Debe ser un número entre 1 y 75");
+      return;
+    }
+    setDrawLoading(true);
+    try {
+      await addNumber(value);
+      setDrawInput("");
+      toast.success("Número agregado");
+    } catch (e: any) {
+      setDrawError(e.message || "Error al agregar número");
+      toast.error(e.message || "Error al agregar número");
+    } finally {
+      // getDrawnNumbers(sessionId as string).then(setDrawnNumbers); // This is now handled by useDrawnNumbers
+      setDrawLoading(false);
+    }
+  };
+
+  const handleUndoDrawnNumber = async () => {
+    setDrawLoading(true);
+    try {
+      await removeLastNumber();
+      toast.success("Último número eliminado");
+    } catch {
+      toast.error("No hay números para eliminar");
+    } finally {
+      // getDrawnNumbers(sessionId as string).then(setDrawnNumbers); // This is now handled by useDrawnNumbers
+      setDrawLoading(false);
+    }
+  };
+
+  const handleDrawInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleAddDrawnNumber();
+    }
+  };
+
+  const handleRemoveDrawnNumber = async (value: number) => {
+    setDrawLoading(true);
+    try {
+      // Eliminar solo ese número para esta sesión
+      const numbers = await getDrawnNumbers(sessionId as string);
+      const filtered = numbers.filter(n => n.value !== value);
+      // Guardar el array filtrado en localStorage
+      localStorage.setItem('izibingope_drawn_numbers', JSON.stringify([
+        ...numbers.filter(n => n.sessionId !== sessionId),
+        ...filtered
+      ]));
+      toast.success(`Número ${value} eliminado`);
+      // setDrawnNumbers(filtered); // This is now handled by useDrawnNumbers
+    } catch {
+      toast.error("Error al eliminar el número");
+    } finally {
+      setDrawLoading(false);
+    }
+  };
+
   // Handlers
   const handleOpenCreate = () => {
     setModalMode("create");
@@ -445,90 +509,185 @@ export default function BingoSessionDetail() {
     );
   }
 
+  // --- Lógica de progreso para cada tarjeta ---
+  const cardsWithProgress = useMemo(() => {
+    return cards.map(card => {
+      const campoLibre = card.numbers[2][2]?.toUpperCase() === 'FREE' || card.numbers[2][2] === '-';
+      let patternCells = getPatternCoords(pattern as PatternType, campoLibre);
+      if (campoLibre) {
+        patternCells = patternCells.filter(([r, c]) => !(r === 2 && c === 2));
+      }
+      const cardNumbers = card.numbers;
+      const patternValues = patternCells.map(([r, c]) => cardNumbers[r][c]);
+      const drawnValues = drawnNumbers.map(n => n.value);
+      const matchedCount = patternValues.filter(val => val && drawnValues.includes(Number(val))).length;
+      const totalCount = patternValues.length;
+      const remaining = totalCount - matchedCount;
+      const percent = totalCount > 0 ? matchedCount / totalCount : 0;
+      return { card, matchedCount, totalCount, remaining, percent, patternCells };
+    });
+  }, [cards, drawnNumbers, pattern]);
+
+  // Calcular el máximo porcentaje de avance
+  const maxPercent = useMemo(() => {
+    return cardsWithProgress.reduce((max, c) => c.percent > max ? c.percent : max, 0);
+  }, [cardsWithProgress]);
+
+  const [sortByProgress, setSortByProgress] = useState(false);
+  const [originalOrder, setOriginalOrder] = useState<string[]>([]); // guardar solo los ids
+
+  // Guardar el orden original al cargar las tarjetas
+  useEffect(() => {
+    if (cards.length && !originalOrder.length) {
+      setOriginalOrder(cards.map(c => c.id));
+    }
+  }, [cards, originalOrder.length]);
+
+  // Ordenar por progreso si el toggle está activo
+  const sortedCardsWithProgress = useMemo(() => {
+    if (sortByProgress) {
+      return [...cardsWithProgress].sort((a, b) => b.percent - a.percent);
+    } else {
+      // Restaurar orden original
+      return originalOrder.length
+        ? originalOrder.map(id => cardsWithProgress.find(c => c.card.id === id)!).filter(Boolean)
+        : cardsWithProgress;
+    }
+  }, [sortByProgress, cardsWithProgress, originalOrder]);
+
   return (
     <div className="max-w-5xl mx-auto py-10 px-4 relative">
       <Toaster position="top-right" />
       {session && <Breadcrumbs sessionName={session.name} />}
-      <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="mb-6">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="cards">Cards</TabsTrigger>
-        </TabsList>
-        <TabsContent value="overview">
-          <Card>
-            <CardContent className="py-6">
-              <h1 className="text-2xl font-bold mb-2">{session?.name}</h1>
-              <div className="text-sm text-muted-foreground mb-4">
-                Created: {session && new Date(session.createdAt).toLocaleString()}
-              </div>
-              <p>Manage bingo cards for this session.</p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="cards">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-20">
-            {loading
-              ? skeletons.map((_, i) => (
-                  <Skeleton key={i} className="h-40 w-full rounded" />
-                ))
-              : cards.map(card => (
-                  <CardThumbnail
-                    key={card.id}
-                    card={card}
-                    onEdit={() => handleOpenEdit(card)}
-                    onDelete={() => handleDelete(card)}
-                    loading={deletingId === card.id}
-                  />
-                ))}
+      <h1 className="text-2xl font-bold mb-2">{session?.name}</h1>
+      <div className="text-sm text-muted-foreground mb-6">
+        Creado: {session && new Date(session.createdAt).toLocaleString()}
+      </div>
+      <DrawnNumbersInput
+        sessionId={sessionId as string}
+        drawnNumbers={drawnNumbers}
+        loading={drawnLoading}
+        error={drawnError}
+        addNumber={addNumber}
+        removeNumber={removeNumber}
+        removeLastNumber={removeLastNumber}
+      />
+      {/* Selector de patrón y toggle de orden */}
+      <div className="flex flex-wrap items-center gap-4 mb-4">
+        <label htmlFor="pattern-select" className="text-sm font-medium min-w-[110px]">Tipo de juego</label>
+        <Select
+          value={pattern}
+          onValueChange={setPattern}
+        >
+          <SelectTrigger id="pattern-select" className="w-44" aria-label="Tipo de juego">
+            <SelectValue placeholder="Selecciona patrón" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {patternOptions.map(opt => (
+                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        <Switch
+          id="sort-by-progress"
+          checked={sortByProgress}
+          onCheckedChange={setSortByProgress}
+        />
+        <label htmlFor="sort-by-progress" className="text-sm font-medium select-none cursor-pointer">
+          Ordenar por progreso
+        </label>
+        <Button
+          variant="destructive"
+          onClick={async () => {
+            if (!window.confirm('¿Seguro que quieres limpiar todos los números extraídos?')) return;
+            // Limpiar todos los números de la sesión actual
+            if (typeof sessionId === 'string') {
+              localStorage.setItem('izibingope_drawn_numbers', JSON.stringify(
+                JSON.parse(localStorage.getItem('izibingope_drawn_numbers') || '[]').filter((n: any) => n.sessionId !== sessionId)
+              ));
+              refreshDrawnNumbers();
+            }
+          }}
+        >
+          Limpiar números extraídos
+        </Button>
+      </div>
+      {/* Si patrón es custom, mostrar placeholder */}
+      {pattern === "custom" ? (
+        <div className="mb-8 flex items-center gap-4">
+          <span className="text-muted-foreground">Custom pattern coming soon</span>
+          <Button disabled>Define Pattern</Button>
+        </div>
+      ) : null}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-20">
+        {loading
+          ? skeletons.map((_, i) => (
+              <Skeleton key={i} className="h-40 w-full rounded" />
+            ))
+          : sortedCardsWithProgress.map(({ card, matchedCount, totalCount, remaining, patternCells, percent }) => (
+              <CardThumbnail
+                key={card.id}
+                card={card}
+                matchedCount={matchedCount}
+                totalCount={totalCount}
+                remaining={remaining}
+                patternCells={patternCells}
+                drawnNumbers={drawnNumbers}
+                isMaxProgress={percent === maxPercent && maxPercent > 0}
+                onEdit={() => handleOpenEdit(card)}
+                onDelete={() => handleDelete(card)}
+                loading={deletingId === card.id}
+              />
+            ))}
+      </div>
+      {/* Floating Action Button */}
+      <Button
+        className="fixed bottom-8 right-8 z-50 rounded-full w-16 h-16 shadow-lg flex items-center justify-center text-3xl"
+        onClick={handleOpenCreate}
+        aria-label="Add Card"
+        variant="default"
+      >
+        <Plus className="w-8 h-8" />
+      </Button>
+      {/* Modal for create/edit card */}
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="max-w-md w-full p-4 max-h-[90vh] overflow-y-auto">
+          <div className="w-full">
+            <DialogHeader>
+              <DialogTitle>{modalMode === 'create' ? 'Agregar nueva tarjeta' : 'Editar tarjeta'}</DialogTitle>
+            </DialogHeader>
+            <CardFormModal
+              open={modalOpen}
+              mode={modalMode}
+              initialCard={selectedCard}
+              onClose={() => setModalOpen(false)}
+              onSave={async (card) => {
+                setModalSaving(true);
+                try {
+                  if (modalMode === 'create' && typeof sessionId === 'string') {
+                    await createBingoCard({ ...card, sessionId, name: card.name ?? '' });
+                    setCards(await getBingoCards(sessionId));
+                  } else if (modalMode === 'edit' && selectedCard) {
+                    await updateBingoCard(selectedCard.id, { ...card, name: card.name ?? '' });
+                    const updatedCards = await getBingoCards(sessionId as string);
+                    setCards(updatedCards);
+                  }
+                  toast.success('Tarjeta guardada');
+                } catch (error) {
+                  console.error('Error saving card:', error);
+                  toast.error('Error al guardar la tarjeta');
+                } finally {
+                  setModalSaving(false);
+                  setModalOpen(false);
+                }
+              }}
+              loading={modalSaving}
+            />
           </div>
-          {/* Floating Action Button */}
-          <Button
-            className="fixed bottom-8 right-8 z-50 rounded-full w-16 h-16 shadow-lg flex items-center justify-center text-3xl"
-            onClick={handleOpenCreate}
-            aria-label="Add Card"
-            variant="default"
-          >
-            <Plus className="w-8 h-8" />
-          </Button>
-          {/* Modal for create/edit card */}
-          <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-            <DialogContent className="max-w-2xl w-full p-0 flex items-center justify-center min-h-[80vh] sm:min-h-[unset] mt-12 sm:mt-0">
-              <div className="w-full max-w-lg p-6">
-                <DialogHeader>
-                  <DialogTitle>{modalMode === 'create' ? 'Agregar nueva tarjeta' : 'Editar tarjeta'}</DialogTitle>
-                </DialogHeader>
-                <CardFormModal
-                  open={modalOpen}
-                  mode={modalMode}
-                  initialCard={selectedCard}
-                  onClose={() => setModalOpen(false)}
-                  onSave={async (card) => {
-                    setModalSaving(true);
-                    try {
-                      if (modalMode === 'create' && typeof sessionId === 'string') {
-                        await createBingoCard({ ...card, sessionId, name: card.name ?? '' });
-                        setCards(await getBingoCards(sessionId));
-                      } else if (modalMode === 'edit' && selectedCard) {
-                        await updateBingoCard(selectedCard.id, { ...card, name: card.name ?? '' });
-                        const updatedCards = await getBingoCards(sessionId as string);
-                        setCards(updatedCards);
-                      }
-                      toast.success('Tarjeta guardada');
-                    } catch (error) {
-                      console.error('Error saving card:', error);
-                      toast.error('Error al guardar la tarjeta');
-                    } finally {
-                      setModalSaving(false);
-                      setModalOpen(false);
-                    }
-                  }}
-                  loading={modalSaving}
-                />
-              </div>
-            </DialogContent>
-          </Dialog>
-        </TabsContent>
-      </Tabs>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 
