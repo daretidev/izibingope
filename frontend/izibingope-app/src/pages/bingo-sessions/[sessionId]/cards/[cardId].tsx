@@ -65,7 +65,7 @@ export default function BingoCardDetail() {
     setError(null);
     try {
       await deleteBingoCard(cardId);
-      router.push(`/bingo-sessions/${sessionId}/cards`);
+      router.push(`/bingo-sessions/${sessionId}/`);
     } catch (e) {
       setError("Error deleting card");
       setSaving(false);
@@ -82,7 +82,7 @@ export default function BingoCardDetail() {
         <h1 className="text-2xl font-bold">Edit Bingo Card</h1>
         <Button
           variant="outline"
-          onClick={() => router.push(`/bingo-sessions/${sessionId}/cards`)}
+          onClick={() => router.push(`/bingo-sessions/${sessionId}/`)}
         >
           Back to Cards
         </Button>

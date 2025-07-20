@@ -1,36 +1,22 @@
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Card, CardContent } from "@/components/ui/card";
+
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast, Toaster } from "sonner";
 import { getBingoSession, BingoSession } from "@/services/bingoSessionService";
-import { getBingoCards, deleteBingoCard, createBingoCard, updateBingoCard, BingoCard, BingoCardInput } from "@/services/bingoCardService";
-import { Plus } from "lucide-react";
+import { getBingoCards, deleteBingoCard, createBingoCard, updateBingoCard, BingoCard } from "@/services/bingoCardService";
+
+import { Plus, Gamepad2, Trash2, Grid3X3, Grid, Trophy } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
-import {
-  addDrawnNumber,
-  getDrawnNumbers,
-  removeLastDrawnNumber,
-  DrawnNumber,
-} from "@/services/drawnNumberService";
+
 import { DrawnNumbersInput } from "@/components/DrawnNumbersInput";
 import { CardThumbnail } from "@/components/CardThumbnail";
 import { useDrawnNumbers } from "@/hooks/useDrawnNumbers";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+
 import { getPatternCoords, PatternType } from "@/lib/patterns";
 import { Switch } from "@/components/ui/switch";
 
@@ -66,7 +52,6 @@ const columnRanges = [
 
 function CardFormModal({ open, mode, initialCard, onClose, onSave, loading }: CardFormModalProps) {
   const [name, setName] = useState(initialCard?.name || "");
-  const [campoLibre, setCampoLibre] = useState(false);
   const [rowInputs, setRowInputs] = useState<string[]>(
     initialCard?.numbers?.map(row => row.join(" ")) || Array(5).fill("")
   );
@@ -82,7 +67,12 @@ function CardFormModal({ open, mode, initialCard, onClose, onSave, loading }: Ca
     for (let r = 0; r < 5; r++) {
       const vals = rowInputs[r].split(/\s+/).filter(Boolean);
       for (let c = 0; c < 5; c++) {
-        parsed[r][c] = vals[c] || "";
+        // Special handling for center cell in row 3
+        if (r === 2 && c === 2 && vals[c] === '-') {
+          parsed[r][c] = '-';
+        } else {
+          parsed[r][c] = vals[c] || "";
+        }
       }
     }
     setNumbers(parsed);
@@ -99,7 +89,6 @@ function CardFormModal({ open, mode, initialCard, onClose, onSave, loading }: Ca
       setName("");
       setRowInputs(Array(5).fill(""));
       setNumbers(Array(5).fill(null).map(() => Array(5).fill("")));
-      setCampoLibre(false);
       setTouched(false);
     }
   }, [initialCard, open, mode]);
@@ -111,7 +100,12 @@ function CardFormModal({ open, mode, initialCard, onClose, onSave, loading }: Ca
     for (let r = 0; r < 5; r++) {
       for (let c = 0; c < 5; c++) {
         const val = nums[r][c];
-        if (!val.trim() || (!campoLibre && r === 2 && c === 2)) continue;
+        if (!val.trim()) continue;
+        // Allow "-" in center cell (row 2, col 2)
+        if (r === 2 && c === 2 && val === '-') {
+          continue; // Skip validation for center cell with "-"
+        }
+        
         // Integer only
         const num = parseInt(val);
         if (isNaN(num) || !/^[0-9]+$/.test(val) || !Number.isInteger(num) || num <= 0) {
@@ -145,7 +139,7 @@ function CardFormModal({ open, mode, initialCard, onClose, onSave, loading }: Ca
 
   useEffect(() => {
     setValidationErrors(validateAllCells(numbers));
-  }, [numbers, campoLibre]);
+  }, [numbers]);
 
   // --- Handlers ---
   const handleRowInput = (rowIdx: number, value: string) => {
@@ -165,7 +159,20 @@ function CardFormModal({ open, mode, initialCard, onClose, onSave, loading }: Ca
     e.preventDefault();
     const vals = e.clipboardData.getData('text').split(/\s+/).filter(Boolean);
     const newRows = [...rowInputs];
-    newRows[rowIdx] = vals.slice(0, 5).join(" ");
+    
+    // Special handling for row 3 (index 2) to preserve "-" in center position
+    if (rowIdx === 2 && vals.length >= 5) {
+      const processedVals = vals.slice(0, 5);
+      // Ensure center position (index 2) can be "-"
+      if (processedVals[2] === '-') {
+        newRows[rowIdx] = processedVals.join(" ");
+      } else {
+        newRows[rowIdx] = processedVals.join(" ");
+      }
+    } else {
+      newRows[rowIdx] = vals.slice(0, 5).join(" ");
+    }
+    
     setRowInputs(newRows);
     setTouched(true);
   };
@@ -194,8 +201,9 @@ function CardFormModal({ open, mode, initialCard, onClose, onSave, loading }: Ca
 
         // Procesar cada número
         numbers.forEach((numStr, colIndex) => {
-          // Saltar la celda central si no hay campo libre
-          if (!campoLibre && rowIndex === 2 && colIndex === 2) {
+          // Allow "-" in center cell
+          if (rowIndex === 2 && colIndex === 2 && numStr === '-') {
+            newNums[rowIndex][colIndex] = numStr;
             return;
           }
 
@@ -224,12 +232,12 @@ function CardFormModal({ open, mode, initialCard, onClose, onSave, loading }: Ca
       toast.error('Error al pegar los números. Verifica el formato.');
     }
   };
-  const isValid = name.trim() && validationErrors.length === 0 && numbers.flat().filter((v, i) => !(i === 12 && !campoLibre)).every(v => v.trim());
+  const isValid = name.trim() && validationErrors.length === 0 && numbers.flat().every(v => v.trim());
 
   // --- Render ---
   return (
     <form
-      className="flex flex-col gap-6"
+      className="flex flex-col gap-4 sm:gap-6"
       onSubmit={async e => {
         e.preventDefault();
         if (!isValid) return;
@@ -238,46 +246,42 @@ function CardFormModal({ open, mode, initialCard, onClose, onSave, loading }: Ca
       }}
     >
       <div className="flex flex-col gap-2">
-        <label className="font-medium">Alias del cartón</label>
+        <label className="font-medium text-sm sm:text-base">Alias del cartón (puedes agregar el codigo central)</label>
         <Input value={name} onChange={e => setName(e.target.value)} disabled={loading} />
       </div>
-      <div className="flex items-center gap-2">
-        <Checkbox id="campo-libre" checked={campoLibre} onCheckedChange={v => setCampoLibre(!!v)} />
-        <label htmlFor="campo-libre" className="text-sm font-medium">Campo Libre (centro)</label>
-      </div>
       <div className="flex flex-col gap-2">
-        <label className="font-medium">Filas (separa los números por espacio)</label>
+        <label className="font-medium text-sm sm:text-base">Filas (separa los números por espacio, en la fila 3 agrega "-" para el centro)</label>
         {Array(5).fill(0).map((_, r) => (
           <Input
             key={r}
             value={rowInputs[r]}
             onChange={e => handleRowInput(r, e.target.value)}
             onPaste={e => handlePasteRow(r, e)}
-            placeholder={`Fila ${r + 1}`}
-            className="font-mono"
+            placeholder={r === 2 ? `Fila ${r + 1} (ej: 1 16 - 46 61)` : `Fila ${r + 1}`}
+            className="font-mono text-sm"
             disabled={loading}
           />
         ))}
       </div>
       <div>
-        <label className="font-medium mb-2 block">Vista previa editable</label>
+        <label className="font-medium mb-2 block text-sm sm:text-base">Vista previa editable</label>
         <div
-          className="grid grid-cols-5 gap-2 border-2 p-4 max-w-xs mx-auto"
+          className="grid grid-cols-5 gap-1 sm:gap-2 border-2 p-2 sm:p-4 max-w-xs mx-auto"
           onPaste={handlePasteGrid}
           tabIndex={0}
         >
-          <div className="col-span-5 grid grid-cols-5 gap-2 mb-2">
+          <div className="col-span-5 grid grid-cols-5 gap-1 sm:gap-2 mb-2">
             {columnRanges.map((col, i) => (
-              <div key={col.letter} className="w-12 h-8 flex items-center justify-center font-bold text-sm">
+              <div key={col.letter} className="w-10 sm:w-12 h-6 sm:h-8 flex items-center justify-center font-bold text-xs sm:text-sm">
                 {col.letter}
-                <div className="text-xs text-muted-foreground ml-1">{col.min}-{col.max}</div>
+                <div className="text-[10px] sm:text-xs text-muted-foreground ml-1">{col.min}-{col.max}</div>
               </div>
             ))}
           </div>
           {numbers.map((row, r) =>
             row.map((val, c) => {
               const isCenter = r === 2 && c === 2;
-              const isDisabled = !campoLibre && isCenter;
+              const isDisabled = false; // Allow editing center cell
               const hasError = validationErrors.some(e => e.row === r && e.col === c);
               return (
                 <Input
@@ -285,22 +289,22 @@ function CardFormModal({ open, mode, initialCard, onClose, onSave, loading }: Ca
                   value={val}
                   onChange={e => handleGridInput(r, c, e.target.value)}
                   disabled={loading || isDisabled}
-                  className={`w-12 h-12 text-center rounded-md ${isDisabled ? 'bg-gray-200' : ''} ${hasError ? 'border-red-500 bg-red-100' : ''} hover:ring-2 hover:ring-blue-500 focus:ring-2 focus:ring-blue-500`}
-                  placeholder={isDisabled ? "FREE" : "0"}
+                  className={`w-10 h-10 sm:w-12 sm:h-12 text-center rounded-md text-xs sm:text-sm ${isDisabled ? 'bg-gray-200' : ''} ${hasError ? 'border-red-500 bg-red-100' : ''} hover:ring-2 hover:ring-blue-500 focus:ring-2 focus:ring-blue-500`}
+                  placeholder={isCenter ? "-" : "0"}
                 />
               );
             })
           )}
         </div>
         {validationErrors.length > 0 && touched && (
-          <div className="text-red-500 text-sm mt-2">
+          <div className="text-red-500 text-xs sm:text-sm mt-2">
             {validationErrors.length} error(es) de validación. Corrige los campos en rojo.
           </div>
         )}
       </div>
       <div className="flex justify-end gap-2 mt-4">
-        <Button type="button" variant="outline" onClick={onClose} disabled={loading}>Cancelar</Button>
-        <Button type="submit" disabled={!isValid || loading}>{mode === 'create' ? 'Agregar' : 'Guardar'}</Button>
+        <Button type="button" variant="outline" onClick={onClose} disabled={loading} size="sm" className="text-xs sm:text-sm">Cancelar</Button>
+        <Button type="submit" disabled={!isValid || loading} size="sm" className="text-xs sm:text-sm">{mode === 'create' ? 'Agregar' : 'Guardar'}</Button>
       </div>
     </form>
   );
@@ -313,12 +317,13 @@ export default function BingoSessionDetail() {
   const [session, setSession] = useState<BingoSession | null>(null);
   const [cards, setCards] = useState<BingoCard[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState("cards");
+
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>("create");
   const [selectedCard, setSelectedCard] = useState<BingoCard | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [modalSaving, setModalSaving] = useState(false);
+  const [patternModalOpen, setPatternModalOpen] = useState(false);
   // Unificar estado de números extraídos
   const {
     drawnNumbers,
@@ -329,18 +334,16 @@ export default function BingoSessionDetail() {
     removeLastNumber,
     refresh: refreshDrawnNumbers,
   } = useDrawnNumbers(typeof sessionId === 'string' ? sessionId : undefined);
-  const [drawInput, setDrawInput] = useState("");
-  const [drawError, setDrawError] = useState<string | null>(null);
-  const [drawLoading, setDrawLoading] = useState(false);
+
 
   // --- Estado para el patrón de juego ---
   const patternOptions = [
-    { value: "full", label: "Full Card" },
-    { value: "row", label: "First Row" },
-    { value: "corners", label: "Four Corners" },
-    { value: "cross", label: "Cross" },
-    { value: "x", label: "X" },
-    { value: "custom", label: "Custom" },
+    { value: "full", label: "Full Card", icon: "🃏" },
+    { value: "row", label: "First Row", icon: "📊" },
+    { value: "corners", label: "Four Corners", icon: "🔲" },
+    { value: "cross", label: "Cross", icon: "➕" },
+    { value: "x", label: "X", icon: "❌" },
+    { value: "custom", label: "Custom", icon: "⚙️" },
   ];
   const [pattern, setPattern] = useState<string>("full");
 
@@ -405,66 +408,7 @@ export default function BingoSessionDetail() {
     loadData();
   }, [sessionId, isRouteReady, router]);
 
-  const handleAddDrawnNumber = async () => {
-    setDrawError(null);
-    if (!drawInput.trim()) return;
-    const value = Number(drawInput);
-    if (!Number.isInteger(value) || value < 1 || value > 75) {
-      setDrawError("Debe ser un número entre 1 y 75");
-      return;
-    }
-    setDrawLoading(true);
-    try {
-      await addNumber(value);
-      setDrawInput("");
-      toast.success("Número agregado");
-    } catch (e: any) {
-      setDrawError(e.message || "Error al agregar número");
-      toast.error(e.message || "Error al agregar número");
-    } finally {
-      // getDrawnNumbers(sessionId as string).then(setDrawnNumbers); // This is now handled by useDrawnNumbers
-      setDrawLoading(false);
-    }
-  };
 
-  const handleUndoDrawnNumber = async () => {
-    setDrawLoading(true);
-    try {
-      await removeLastNumber();
-      toast.success("Último número eliminado");
-    } catch {
-      toast.error("No hay números para eliminar");
-    } finally {
-      // getDrawnNumbers(sessionId as string).then(setDrawnNumbers); // This is now handled by useDrawnNumbers
-      setDrawLoading(false);
-    }
-  };
-
-  const handleDrawInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleAddDrawnNumber();
-    }
-  };
-
-  const handleRemoveDrawnNumber = async (value: number) => {
-    setDrawLoading(true);
-    try {
-      // Eliminar solo ese número para esta sesión
-      const numbers = await getDrawnNumbers(sessionId as string);
-      const filtered = numbers.filter(n => n.value !== value);
-      // Guardar el array filtrado en localStorage
-      localStorage.setItem('izibingope_drawn_numbers', JSON.stringify([
-        ...numbers.filter(n => n.sessionId !== sessionId),
-        ...filtered
-      ]));
-      toast.success(`Número ${value} eliminado`);
-      // setDrawnNumbers(filtered); // This is now handled by useDrawnNumbers
-    } catch {
-      toast.error("Error al eliminar el número");
-    } finally {
-      setDrawLoading(false);
-    }
-  };
 
   // Handlers
   const handleOpenCreate = () => {
@@ -494,29 +438,10 @@ export default function BingoSessionDetail() {
   // Skeletons
   const skeletons = Array(6).fill(0);
 
-  // Si la ruta no está lista, mostramos un skeleton general
-  if (!router.isReady) {
-    return (
-      <div className="max-w-5xl mx-auto py-10 px-4">
-        <Skeleton className="h-8 w-64 mb-6" /> {/* Breadcrumb skeleton */}
-        <Skeleton className="h-12 w-full mb-6" /> {/* Tabs skeleton */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {skeletons.map((_, i) => (
-            <Skeleton key={i} className="h-40 w-full rounded" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   // --- Lógica de progreso para cada tarjeta ---
   const cardsWithProgress = useMemo(() => {
     return cards.map(card => {
-      const campoLibre = card.numbers[2][2]?.toUpperCase() === 'FREE' || card.numbers[2][2] === '-';
-      let patternCells = getPatternCoords(pattern as PatternType, campoLibre);
-      if (campoLibre) {
-        patternCells = patternCells.filter(([r, c]) => !(r === 2 && c === 2));
-      }
+      let patternCells = getPatternCoords(pattern as PatternType);
       const cardNumbers = card.numbers;
       const patternValues = patternCells.map(([r, c]) => cardNumbers[r][c]);
       const drawnValues = drawnNumbers.map(n => n.value);
@@ -533,87 +458,137 @@ export default function BingoSessionDetail() {
     return cardsWithProgress.reduce((max, c) => c.percent > max ? c.percent : max, 0);
   }, [cardsWithProgress]);
 
-  const [sortByProgress, setSortByProgress] = useState(false);
-  const [originalOrder, setOriginalOrder] = useState<string[]>([]); // guardar solo los ids
+  const [compactView, setCompactView] = useState(false);
 
-  // Guardar el orden original al cargar las tarjetas
-  useEffect(() => {
-    if (cards.length && !originalOrder.length) {
-      setOriginalOrder(cards.map(c => c.id));
-    }
-  }, [cards, originalOrder.length]);
+  // Calcular BINGOs completados directamente en el render
+  const completedBingos = useMemo(() => {
+    if (!cards.length || !drawnNumbers.length) return new Set<string>();
+    
+    const completed = new Set<string>();
+    
+    cards.forEach(card => {
+      const patternCells = getPatternCoords(pattern as PatternType);
+      const cardNumbers = card.numbers;
+      const patternValues = patternCells.map(([r, c]) => cardNumbers[r][c]);
+      const drawnValues = drawnNumbers.map(n => n.value);
+      const matchedCount = patternValues.filter(val => val && drawnValues.includes(Number(val))).length;
+      const totalCount = patternValues.length;
+      const remaining = totalCount - matchedCount;
+      
+      if (remaining === 0 && typeof remaining === 'number') {
+        completed.add(card.id);
+      }
+    });
+    
+    return completed;
+  }, [cards, drawnNumbers, pattern]);
 
-  // Ordenar por progreso si el toggle está activo
+  // Ordenar siempre por progreso (más aciertos primero)
   const sortedCardsWithProgress = useMemo(() => {
-    if (sortByProgress) {
-      return [...cardsWithProgress].sort((a, b) => b.percent - a.percent);
-    } else {
-      // Restaurar orden original
-      return originalOrder.length
-        ? originalOrder.map(id => cardsWithProgress.find(c => c.card.id === id)!).filter(Boolean)
-        : cardsWithProgress;
-    }
-  }, [sortByProgress, cardsWithProgress, originalOrder]);
+    return [...cardsWithProgress].sort((a, b) => b.percent - a.percent);
+  }, [cardsWithProgress]);
+
+  // Si la ruta no está lista, mostramos un skeleton general
+  if (!router.isReady) {
+    return (
+      <div className="max-w-5xl mx-auto py-10 px-4">
+        <Skeleton className="h-8 w-64 mb-6" /> {/* Breadcrumb skeleton */}
+        <Skeleton className="h-12 w-full mb-6" /> {/* Tabs skeleton */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          {skeletons.map((_, i) => (
+            <Skeleton key={i} className="h-40 w-full rounded" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto py-10 px-4 relative">
       <Toaster position="top-right" />
       {session && <Breadcrumbs sessionName={session.name} />}
-      <h1 className="text-2xl font-bold mb-2">{session?.name}</h1>
-      <div className="text-sm text-muted-foreground mb-6">
-        Creado: {session && new Date(session.createdAt).toLocaleString()}
-      </div>
-      <DrawnNumbersInput
-        sessionId={sessionId as string}
-        drawnNumbers={drawnNumbers}
-        loading={drawnLoading}
-        error={drawnError}
-        addNumber={addNumber}
-        removeNumber={removeNumber}
-        removeLastNumber={removeLastNumber}
-      />
-      {/* Selector de patrón y toggle de orden */}
-      <div className="flex flex-wrap items-center gap-4 mb-4">
-        <label htmlFor="pattern-select" className="text-sm font-medium min-w-[110px]">Tipo de juego</label>
-        <Select
-          value={pattern}
-          onValueChange={setPattern}
-        >
-          <SelectTrigger id="pattern-select" className="w-44" aria-label="Tipo de juego">
-            <SelectValue placeholder="Selecciona patrón" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {patternOptions.map(opt => (
-                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <Switch
-          id="sort-by-progress"
-          checked={sortByProgress}
-          onCheckedChange={setSortByProgress}
-        />
-        <label htmlFor="sort-by-progress" className="text-sm font-medium select-none cursor-pointer">
-          Ordenar por progreso
-        </label>
+      
+      {/* Botones de acción superiores */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="outline"
+            onClick={() => setPatternModalOpen(true)}
+            className="flex flex-col items-center justify-center gap-2 p-4 w-20 h-20 min-w-20 min-h-20"
+          >
+            <Gamepad2 className="w-6 h-6" />
+            <span className="text-xs font-medium text-center leading-tight">
+              {patternOptions.find(opt => opt.value === pattern)?.label?.includes(' ') 
+                ? patternOptions.find(opt => opt.value === pattern)?.label?.split(' ').map((word, i) => (
+                    <span key={i} className="block">{word}</span>
+                  ))
+                : patternOptions.find(opt => opt.value === pattern)?.label || "Tipo de\njuego"
+              }
+            </span>
+          </Button>
+          
+          {pattern && pattern !== "" && (
+            <Button
+              variant="outline"
+              disabled={drawnNumbers.length === 0}
+              onClick={async () => {
+                if (!window.confirm('¿Seguro que quieres limpiar todos los números extraídos?')) return;
+                if (typeof sessionId === 'string') {
+                  localStorage.setItem('izibingope_drawn_numbers', JSON.stringify(
+                    JSON.parse(localStorage.getItem('izibingope_drawn_numbers') || '[]').filter((n: any) => n.sessionId !== sessionId)
+                  ));
+                  refreshDrawnNumbers();
+                }
+              }}
+              className="flex flex-col items-center justify-center gap-2 p-4 w-20 h-20 min-w-20 min-h-20"
+            >
+              <Trash2 className={`w-6 h-6 ${drawnNumbers.length === 0 ? 'text-muted-foreground' : ''}`} />
+              <span className="text-xs font-medium text-center leading-tight">
+                <span className="block">Limpiar</span>
+                <span className="block">números</span>
+              </span>
+            </Button>
+          )}
+        </div>
+        
         <Button
-          variant="destructive"
-          onClick={async () => {
-            if (!window.confirm('¿Seguro que quieres limpiar todos los números extraídos?')) return;
-            // Limpiar todos los números de la sesión actual
-            if (typeof sessionId === 'string') {
-              localStorage.setItem('izibingope_drawn_numbers', JSON.stringify(
-                JSON.parse(localStorage.getItem('izibingope_drawn_numbers') || '[]').filter((n: any) => n.sessionId !== sessionId)
-              ));
-              refreshDrawnNumbers();
-            }
-          }}
+          onClick={handleOpenCreate}
+          className="flex flex-col items-center justify-center gap-2 p-4 w-20 h-20 min-w-20 min-h-20"
         >
-          Limpiar números extraídos
+          <Plus className="w-6 h-6" />
+          <span className="text-xs font-medium text-center leading-tight">
+            <span className="block">Agregar</span>
+            <span className="block">Tarjeta</span>
+          </span>
         </Button>
       </div>
+
+      {/* PASO 2: Controles de números extraídos (solo visibles si hay tipo de juego seleccionado) */}
+      {pattern && pattern !== "" && (
+        <div className="mb-8">
+          <DrawnNumbersInput
+            sessionId={sessionId as string}
+            drawnNumbers={drawnNumbers}
+            loading={drawnLoading}
+            error={drawnError}
+            addNumber={addNumber}
+            removeNumber={removeNumber}
+            removeLastNumber={removeLastNumber}
+            compactView={compactView}
+            onCompactViewChange={setCompactView}
+          />
+          
+          {/* Contador de BINGOs */}
+          {completedBingos.size > 0 && (
+            <div className="flex items-center gap-2 bg-green-100 text-green-800 px-3 py-1 rounded-full mb-4">
+              <span className="text-lg">🎉</span>
+              <span className="text-sm font-medium">
+                {completedBingos.size} BINGO{completedBingos.size > 1 ? 'S' : ''} completado{completedBingos.size > 1 ? 's' : ''}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
       {/* Si patrón es custom, mostrar placeholder */}
       {pattern === "custom" ? (
         <div className="mb-8 flex items-center gap-4">
@@ -621,12 +596,18 @@ export default function BingoSessionDetail() {
           <Button disabled>Define Pattern</Button>
         </div>
       ) : null}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-20">
+      
+      {/* PASO 3: Grid de tarjetas siempre visible */}
+      <div className={`grid gap-4 mb-8 ${
+        compactView 
+          ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5' 
+          : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3'
+      }`}>
         {loading
           ? skeletons.map((_, i) => (
               <Skeleton key={i} className="h-40 w-full rounded" />
             ))
-          : sortedCardsWithProgress.map(({ card, matchedCount, totalCount, remaining, patternCells, percent }) => (
+          : sortedCardsWithProgress.map(({ card, matchedCount, totalCount, remaining, patternCells, percent }, i) => (
               <CardThumbnail
                 key={card.id}
                 card={card}
@@ -639,24 +620,18 @@ export default function BingoSessionDetail() {
                 onEdit={() => handleOpenEdit(card)}
                 onDelete={() => handleDelete(card)}
                 loading={deletingId === card.id}
+                compact={compactView}
+                isBingo={completedBingos.has(card.id)}
               />
             ))}
       </div>
-      {/* Floating Action Button */}
-      <Button
-        className="fixed bottom-8 right-8 z-50 rounded-full w-16 h-16 shadow-lg flex items-center justify-center text-3xl"
-        onClick={handleOpenCreate}
-        aria-label="Add Card"
-        variant="default"
-      >
-        <Plus className="w-8 h-8" />
-      </Button>
+
       {/* Modal for create/edit card */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-md w-full p-4 max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-md w-full p-4 max-h-[90vh] overflow-y-auto sm:max-w-md">
           <div className="w-full">
             <DialogHeader>
-              <DialogTitle>{modalMode === 'create' ? 'Agregar nueva tarjeta' : 'Editar tarjeta'}</DialogTitle>
+              <DialogTitle className="text-lg sm:text-xl">{modalMode === 'create' ? 'Agregar nueva tarjeta' : 'Editar tarjeta'}</DialogTitle>
             </DialogHeader>
             <CardFormModal
               open={modalOpen}
@@ -685,6 +660,42 @@ export default function BingoSessionDetail() {
               }}
               loading={modalSaving}
             />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal para seleccionar tipo de juego */}
+      <Dialog open={patternModalOpen} onOpenChange={setPatternModalOpen}>
+        <DialogContent className="max-w-md w-full p-6">
+          <DialogHeader>
+            <DialogTitle>Seleccionar Tipo de Juego</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-wrap justify-center gap-4 mt-4">
+            {patternOptions.map((option) => (
+              <Button
+                key={option.value}
+                variant={pattern === option.value ? "default" : "outline"}
+                className="flex flex-col items-center justify-center gap-3 p-4 w-24 h-24 min-w-24 min-h-24"
+                onClick={() => {
+                  setPattern(option.value);
+                  setPatternModalOpen(false);
+                }}
+              >
+                <div className="flex-1 flex items-center justify-center">
+                  <span className="text-3xl">{option.icon}</span>
+                </div>
+                <div className="flex-1 flex items-center justify-center">
+                  <span className="text-xs font-medium text-center leading-tight">
+                    {option.label.includes(' ') 
+                      ? option.label.split(' ').map((word, i) => (
+                          <span key={i} className="block">{word}</span>
+                        ))
+                      : option.label
+                    }
+                  </span>
+                </div>
+              </Button>
+            ))}
           </div>
         </DialogContent>
       </Dialog>
